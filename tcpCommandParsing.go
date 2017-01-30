@@ -2,7 +2,6 @@ package main
 
 import (
     "fmt"
-    "regexp"
 )
 
 type TCPFlag int
@@ -43,7 +42,7 @@ var TCPFlagValueMap = map[string]TCPFlag{
 type TCPFlagOp int
 
 const (
-    TCP_FLAG_OP_OR      = 0xff
+    TCP_FLAG_OP_OR      = 0x00
     TCP_FLAG_OP_AND     = 0x40
     TCP_FLAG_OP_END     = 0x80
     TCP_FLAG_OP_NOT     = 0x02
@@ -77,26 +76,27 @@ var examples= []string {
     "=SA&=!U",
     "!SA&!U",
     "=!SA&=!U",
+    "SETUYA",
     "SA&=!U",
 }
 
-var regexpTcpFlagsOnly string = "^(?:([CEUAPRSF])(?!.*\\1))*$"
 
 func main() {
     for _, myCmd := range(examples) {
-        fmt.Printf("command \"%s\": \n", myCmd)
-        // fmt.Printf("lexicalCheck: %t\n", lexicalCheck(myCmd))
-        err := parseTcpFlagCmd(myCmd)
-        fmt.Println(err)
+        err, tcpFlagsValues, tcpFlowSpecOps := parseTcpFlagCmd(myCmd)
+        fmt.Printf("command: %s => ", myCmd)
+        if err != nil {
+            fmt.Println(err)
+        } else {
+            for index :=0; index < len(tcpFlagsValues); index++ {
+                fmt.Printf(" %d flags/ops: %b/%b", index, tcpFlagsValues[index], tcpFlowSpecOps[index])
+            }
+        fmt.Printf("\n")
+        }
     }
 }
 
-func lexicalCheck(myCmd string) bool {
-    matched, _ := regexp.MatchString("((=!([CEUAPRSF]+)[ &\\n])|(([!=]([CEUAPRSF]*)[ &\\n]))|(([CEUAPRSF]+)[ &\\n]))+", myCmd)
-    return matched
-}
-
-func parseTcpFlagCmd(myCmd string) error {
+func parseTcpFlagCmd(myCmd string) (error, []int, []int) {
     var tcpFlagBitMap = map[string]bool{
         TCPFlagNameMap[TCP_FLAG_FIN]:    false,
         TCPFlagNameMap[TCP_FLAG_SYN]:    false,
@@ -114,9 +114,12 @@ func parseTcpFlagCmd(myCmd string) error {
         TCPFlagOpNameMap[TCP_FLAG_OP_MATCH]: false,
     }
     var index int = 0
+    var tcpFlagsValues []int
+    var tcpFlowSpecOps []int
+    var tcpFlagsValue int = 0
+    var tcpFlowSpecOp int = 0
     for index < len(myCmd) {
         myCmdChar := myCmd[index:index+1]
-        fmt.Printf("myCmdChar:%s\n", myCmdChar)
         switch myCmdChar {
         case TCPFlagOpNameMap[TCP_FLAG_OP_MATCH]:
             if(tcpFlagOpBitMap[myCmdChar] == false) {
@@ -124,7 +127,7 @@ func parseTcpFlagCmd(myCmd string) error {
                 index++
             } else {
                 err := fmt.Errorf("Match flag appears multiple time")
-                return err
+                return err, tcpFlagsValues, tcpFlowSpecOps
             }
         case TCPFlagOpNameMap[TCP_FLAG_OP_NOT]:
             if(tcpFlagOpBitMap[myCmdChar] == false) {
@@ -132,31 +135,30 @@ func parseTcpFlagCmd(myCmd string) error {
                 index++
             } else {
                 err := fmt.Errorf("Not flag appears multiple time")
-                return err
+                return err, tcpFlagsValues, tcpFlowSpecOps
             }
         case TCPFlagOpNameMap[TCP_FLAG_OP_AND], TCPFlagOpNameMap[TCP_FLAG_OP_OR]:
-            fmt.Printf("OR ou AND\n")
             if(tcpFlagOpBitMap[myCmdChar] == false) {
                 tcpFlagOpBitMap[myCmdChar] = true
-                fmt.Printf("Copy all flags and back to all false\n")
-                fmt.Println("map tcpflag: ", tcpFlagBitMap)
-                fmt.Println("map operator: ", tcpFlagOpBitMap)
+                tcpFlagsValue, tcpFlowSpecOp = setTcpOpsBitmapWithMap(tcpFlagBitMap, tcpFlagOpBitMap)
+                tcpFlagsValues = append(tcpFlagsValues, tcpFlagsValue)
+                tcpFlowSpecOps = append(tcpFlowSpecOps, tcpFlowSpecOp)
                 resetAllFlagsToFalse(tcpFlagBitMap, tcpFlagOpBitMap)
                 index++
             } else {
                 err := fmt.Errorf("AND or OR (space) operator appears multiple time")
-                return err
+                return err, tcpFlagsValues, tcpFlowSpecOps
             }
         case TCPFlagNameMap[TCP_FLAG_ACK], TCPFlagNameMap[TCP_FLAG_SYN], TCPFlagNameMap[TCP_FLAG_FIN],
         TCPFlagNameMap[TCP_FLAG_URGENT], TCPFlagNameMap[TCP_FLAG_ECE], TCPFlagNameMap[TCP_FLAG_RST],
         TCPFlagNameMap[TCP_FLAG_CWR], TCPFlagNameMap[TCP_FLAG_PUSH]:
             myLoopChar := myCmdChar
             loopIndex := index
+            // we loop till we reach the end of TCP flags description
             // exit conditions : we reach the end of tcp flags bacause we found & or ' ' or we reach the end of the line
             for (loopIndex < len(myCmd) &&
                 (myLoopChar != TCPFlagOpNameMap[TCP_FLAG_OP_AND] && myLoopChar != TCPFlagOpNameMap[TCP_FLAG_OP_OR])) {
-                fmt.Printf("bool de char %s = %t\n", myLoopChar, tcpFlagBitMap[myLoopChar])
-                // we check that charatere is a well known flag and is not doubled
+                // we check that charater is a well known flag and is not doubled
                 if (TCPFlagValueMap[myLoopChar]!= 0 && tcpFlagBitMap[myLoopChar] == false) {
                     tcpFlagBitMap[myLoopChar] = true            // we set this flag to true
                     loopIndex++                                 // we move to next character
@@ -165,21 +167,22 @@ func parseTcpFlagCmd(myCmd string) error {
                     }
                 } else {
                     err := fmt.Errorf("flag %s appears multiple time or is not part of TCP flags", myLoopChar)
-                    return err
+                    return err, tcpFlagsValues, tcpFlowSpecOps
                 }
             }
+            // we are done with flags, we give back where we are for the first loop
             index = loopIndex
         default:
             err := fmt.Errorf("flag %s not part of tcp flags", myCmdChar)
-            return err
+            return err, tcpFlagsValues, tcpFlowSpecOps
         }
     }
     tcpFlagOpBitMap["E"] = true
-    fmt.Printf("Copy all flags and back to all false\n")
-    fmt.Println("map tcpflag: ", tcpFlagBitMap)
-    fmt.Println("map operator: ", tcpFlagOpBitMap)
+    tcpFlagsValue, tcpFlowSpecOp = setTcpOpsBitmapWithMap(tcpFlagBitMap, tcpFlagOpBitMap)
+    tcpFlagsValues = append(tcpFlagsValues, tcpFlagsValue)
+    tcpFlowSpecOps = append(tcpFlowSpecOps, tcpFlowSpecOp)
     resetAllFlagsToFalse(tcpFlagBitMap, tcpFlagOpBitMap)
-    return nil
+    return nil, tcpFlagsValues, tcpFlowSpecOps
 }
 
 func resetAllFlagsToFalse(myTcpFlagBitMap map[string]bool, myTcpFlagOpBitMap map[string]bool) {
@@ -196,4 +199,20 @@ func resetAllFlagsToFalse(myTcpFlagBitMap map[string]bool, myTcpFlagOpBitMap map
     myTcpFlagOpBitMap[TCPFlagOpNameMap[TCP_FLAG_OP_END]]   = false
     myTcpFlagOpBitMap[TCPFlagOpNameMap[TCP_FLAG_OP_NOT]]   = false
     myTcpFlagOpBitMap[TCPFlagOpNameMap[TCP_FLAG_OP_MATCH]] = false
+}
+
+func setTcpOpsBitmapWithMap(myTcpFlagBitMap map[string]bool, myTcpFlagOpBitMap map[string]bool) (int, int) {
+    var myFlags int = 0
+    var myOps int = 0
+    for flagString, flagSetUnset := range myTcpFlagBitMap {
+        if (flagSetUnset) {
+            myFlags |= int(TCPFlagValueMap[flagString])
+        }
+    }
+    for opString, opSetUnset := range myTcpFlagOpBitMap {
+        if (opSetUnset) {
+            myOps |= int(TCPFlagOpValueMap[opString])
+        }
+    }
+    return myFlags, myOps
 }
