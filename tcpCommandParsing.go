@@ -155,22 +155,22 @@ func parseTcpFlagCmd(myCmd string) (error, []int, []int) {
             myLoopChar := myCmdChar
             loopIndex := index
             // we loop till we reach the end of TCP flags description
-            // exit conditions : we reach the end of tcp flags bacause we found & or ' ' or we reach the end of the line
+            // exit conditions : we reach the end of tcp flags (we found & or ' ') or we reach the end of the line
             for (loopIndex < len(myCmd) &&
                 (myLoopChar != TCPFlagOpNameMap[TCP_FLAG_OP_AND] && myLoopChar != TCPFlagOpNameMap[TCP_FLAG_OP_OR])) {
-                // we check that charater is a well known flag and is not doubled
+                // we check if inspected charater is a well known tcp flag and if it doesn't appear twice
                 if (TCPFlagValueMap[myLoopChar]!= 0 && tcpFlagBitMap[myLoopChar] == false) {
                     tcpFlagBitMap[myLoopChar] = true            // we set this flag to true
                     loopIndex++                                 // we move to next character
                     if(loopIndex < len(myCmd)) {
-                        myLoopChar = myCmd[loopIndex:loopIndex+1]   // we set next character only if we didn't reach the end of cmd
+                        myLoopChar = myCmd[loopIndex:loopIndex+1]   // we move to the next character only if we didn't reach the end of cmd
                     }
                 } else {
                     err := fmt.Errorf("flag %s appears multiple time or is not part of TCP flags", myLoopChar)
                     return err, tcpFlagsValues, tcpFlowSpecOps
                 }
             }
-            // we are done with flags, we give back where we are for the first loop
+            // we are done with flags, we give back the next cooming charater to the main loop
             index = loopIndex
         default:
             err := fmt.Errorf("flag %s not part of tcp flags", myCmdChar)
