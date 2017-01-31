@@ -108,6 +108,7 @@ func parseTcpFlagCmd(myCmd string) (error, []int, []int) {
         TCPFlagNameMap[TCP_FLAG_ECE]:    false,
     }
     var tcpFlagOpBitMap = map[string]bool{
+        TCPFlagOpNameMap[TCP_FLAG_OP_OR]:    false,
         TCPFlagOpNameMap[TCP_FLAG_OP_AND]:   false,
         TCPFlagOpNameMap[TCP_FLAG_OP_END]:   false,
         TCPFlagOpNameMap[TCP_FLAG_OP_NOT]:   false,
