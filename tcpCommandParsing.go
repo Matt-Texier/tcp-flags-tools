@@ -93,6 +93,11 @@ func main() {
             }
         fmt.Printf("\n")
         }
+        fmt.Printf("format: ")
+        for index := 0; index < len(tcpFlagsValues); index++ {
+            fmt.Printf("%s", formatFlag(tcpFlowSpecOps[index], tcpFlagsValues[index]))
+        }
+        fmt.Printf("\n")
     }
 }
 
@@ -216,4 +221,26 @@ func setTcpOpsBitmapWithMap(myTcpFlagBitMap map[string]bool, myTcpFlagOpBitMap m
         }
     }
     return myFlags, myOps
+}
+
+
+func formatFlag(op int, value int) string {
+    var retString string
+    if op&TCP_FLAG_OP_MATCH > 0 {
+        retString = fmt.Sprintf("%s%s", retString, TCPFlagOpNameMap[TCP_FLAG_OP_MATCH])
+    }
+    if op&TCP_FLAG_OP_NOT > 0 {
+        retString = fmt.Sprintf("%s%s", retString, TCPFlagOpNameMap[TCP_FLAG_OP_NOT])
+    }
+    for flag, valueFlag := range TCPFlagValueMap {
+        if value&int(valueFlag) > 0 {
+            retString = fmt.Sprintf("%s%s", retString, flag)
+        }
+    }
+    if op&TCP_FLAG_OP_AND > 0 {
+        retString = fmt.Sprintf("%s%s", retString, TCPFlagOpNameMap[TCP_FLAG_OP_AND])
+    } else { // default is or
+        retString = fmt.Sprintf("%s%s", retString, TCPFlagOpNameMap[TCP_FLAG_OP_OR])
+    }
+    return retString
 }
